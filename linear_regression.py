@@ -1,13 +1,22 @@
 import numpy as np
 import math
-import sys
 import time
+import enum
+
+class FeaturePreProcessingType(enum.Enum):
+    none = 0
+    feature_scaling = 1
+    learning_rate_scaling = 2
 
 class Trainer:
     """
     This class is used to perform linear regression.
     """
-    def __init__(self, data, test_sample_ratio, learning_rate=0.01, is_feature_scaling_enabled=True):
+    def __init__(self,
+                 data,
+                 test_sample_ratio=0.0,
+                 learning_rate=0.01,
+                 features_pre_processing_type=FeaturePreProcessingType.none):
         """
         Initialize a trainer with a training set data, which is an augmented matrix.
         Test sample percentage indicates how many percent of the data should be used as test samples,
@@ -19,36 +28,37 @@ class Trainer:
         self.__data = data
         self.__learning_rate = learning_rate
         self.__test_sample_ratio = test_sample_ratio
-        self.__is_feature_scaling_enabled = is_feature_scaling_enabled
-        
+        self.__features_pre_processing_type = features_pre_processing_type
+
         self.__setup_training_and_testing_sets()
         self.__setup_weights()
 
     def train(self):
         start_time = time.time()
-        last_cost = self.__cost()
+        last_cost = self.__cost_of_training_set()
         cost_not_change_count = 0
         while cost_not_change_count <= 10:
-            predictions = self.__predict_scaled_with_x0_column_features(self.__training_set_features)
-            diff = predictions - self.__training_set_outputs
-            features_scaled_with_diff = (self.__training_set_features.transpose() @ diff).transpose()
             change = self.__derivative_of_cost()
-            self.__weights = self.__weights - self.__learning_rate * change
-            current_cost = self.__cost()
+            if self.__features_pre_processing_type == FeaturePreProcessingType.learning_rate_scaling:
+                self.__weights = self.__weights - change * self.__learning_rate.transpose()
+            else:
+                self.__weights = self.__weights - change * self.__learning_rate
+            current_cost = self.__cost_of_training_set()
             if current_cost == last_cost:
                 cost_not_change_count += 1
             last_cost = current_cost
     
         end_time = time.time()
-        print('Finished trainging, used {0:.2f} seconds.'.format(end_time - start_time))
+        print('Finished training, used {0:.2f} seconds.'.format(end_time - start_time))
         print('Weights are: {0}'.format(self.__weights))
-        try:
-            print('Error rate is {0:.10f}%.'.format(self.__get_error_rate_from_testing_set() * 100))
-        except ValueError as e:
-            print('There is no testing data.')
+        print('Cost is {0:.10f}'.format(self.__cost_of_testing_set()))
+        # try:
+        #     print('Cost is {0}.'.format(self.__cost_of_testing_set()))
+        # except ValueError as e:
+        #     print(e)
         
     def predict(self, features):
-        if self.__is_feature_scaling_enabled:
+        if self.__features_pre_processing_type == FeaturePreProcessingType.feature_scaling:
             features = self.__scale_features(features)
         
         features = self.__add_x0_column(features)
@@ -67,10 +77,15 @@ class Trainer:
         self.__training_set_outputs = self.__data[:num_training_sample, -1]
         self.__testing_set_features = self.__data[num_training_sample:, :-1]
         self.__testing_set_outputs = self.__data[num_training_sample:, -1]
-        if self.__is_feature_scaling_enabled:
+        if self.__features_pre_processing_type != FeaturePreProcessingType.none:
             self.__update_feature_scaling_parameters()
-            self.__training_set_features = self.__scale_features(self.__training_set_features)
+            if self.__features_pre_processing_type == FeaturePreProcessingType.feature_scaling:
+                self.__training_set_features = self.__scale_features(self.__training_set_features)
+                self.__testing_set_features = self.__scale_features(self.__testing_set_features)
+            elif self.__features_pre_processing_type == FeaturePreProcessingType.learning_rate_scaling:
+                self.__scale_learning_rate_if_enabled()
         self.__training_set_features = self.__add_x0_column(self.__training_set_features)
+        self.__testing_set_features = self.__add_x0_column(self.__testing_set_features)
     
     def __get_training_and_testing_samples_counts(self):
         total_sample_count = np.size(self.__data, axis=0)
@@ -79,11 +94,11 @@ class Trainer:
         return (training_set_count, testing_set_count)
 
     def __update_feature_scaling_parameters(self):
-        self.__feature_scalling_avg = np.average(self.__training_set_features, axis=0)
-        self.__feature_scalling_range = np.max(self.__training_set_features, axis=0) - np.min(self.__training_set_features, axis=0)
+        self.__feature_scaling_std = np.std(self.__training_set_features, axis=0)
+        self.__feature_scaling_range = np.max(self.__training_set_features, axis=0) - np.min(self.__training_set_features, axis=0)
         
     def __scale_features(self, features):
-        return (features - self.__feature_scalling_avg) / self.__feature_scalling_range
+        return (features - self.__feature_scaling_std) / self.__feature_scaling_range
     
     def __add_x0_column(self, A):
         try:
@@ -94,11 +109,17 @@ class Trainer:
     def __setup_weights(self):
         self.__weights = np.zeros(np.size(self.__training_set_features, axis=1))
         
-    def __cost(self):
-        predictions = np.sum(self.__training_set_features @ self.__weights.transpose())
-        diff = self.__training_set_outputs - predictions
-        diff_squared = diff * diff.transpose()
-        result = np.sum(diff_squared) * 0.5 / np.size(self.__training_set_features, axis=0)
+    def __cost_of_training_set(self):
+        return self.__cost(self.__training_set_features, self.__training_set_outputs)
+    
+    def __cost_of_testing_set(self):
+        return self.__cost(self.__testing_set_features, self.__testing_set_outputs)
+    
+    def __cost(self, features, outputs):
+        predictions = self.__predict_scaled_with_x0_column_features(features)
+        diff = np.array(outputs - predictions)
+        diff_squared = np.power(diff, 2)
+        result = np.average(diff_squared) / 2.0
         return result
     
     def __derivative_of_cost(self):
@@ -106,22 +127,19 @@ class Trainer:
         diff = predictions - self.__training_set_outputs
         features_scaled_with_diff = (self.__training_set_features.transpose() @ diff).transpose()
         return np.average(features_scaled_with_diff, axis=0)
-    
-    def __get_error_rate_from_testing_set(self):
-        if not self.__testing_set_features:
-            raise ValueError('Cannot get error rate, does not have a testing set data.')
-        predictions = self.predict(self.__testing_set_features)
-        errors = predictions - self.__testing_set_outputs
-        error_rates = np.array([])
-        error_rates = abs(errors) / self.__testing_set_outputs
-        return np.average(error_rates)
+
+    def __scale_learning_rate_if_enabled(self):
+        current_flat_rate = self.__learning_rate
+        if self.__features_pre_processing_type == FeaturePreProcessingType.learning_rate_scaling:
+            self.__learning_rate *= self.__feature_scaling_std
+            self.__learning_rate = np.insert(self.__learning_rate, obj=0, values=current_flat_rate, axis=1)
 
 data = np.matrix('1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 3 40; 5 60; 0 10; 10 110')
 
 trainer = Trainer(data,
-                  test_sample_ratio=0.1,
-                  learning_rate=0.001,
-                  is_feature_scaling_enabled=False)
+                  test_sample_ratio=0.2,
+                  learning_rate=0.01,
+                  features_pre_processing_type=FeaturePreProcessingType.feature_scaling)
 trainer.train()
 
 print(trainer.predict(np.matrix('3; 4; 10; 12; 1300')))
