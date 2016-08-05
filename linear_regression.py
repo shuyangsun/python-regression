@@ -28,7 +28,7 @@ class Trainer:
         start_time = time.time()
         last_cost = self.__cost()
         cost_not_change_count = 0
-        while cost_not_change_count <= 3:
+        while cost_not_change_count <= 10:
             predictions = self.__predict_scaled_with_x0_column_features(self.__training_set_features)
             diff = predictions - self.__training_set_outputs
             features_scaled_with_diff = (self.__training_set_features.transpose() @ diff).transpose()
@@ -112,16 +112,16 @@ class Trainer:
             raise ValueError('Cannot get error rate, does not have a testing set data.')
         predictions = self.predict(self.__testing_set_features)
         errors = predictions - self.__testing_set_outputs
+        error_rates = np.array([])
         error_rates = abs(errors) / self.__testing_set_outputs
         return np.average(error_rates)
 
-data = np.matrix('1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 9.5 105; 3.5 45; -10 -90; 10 110')
-trainer = Trainer(data, test_sample_ratio=0.1, learning_rate=0.001, is_feature_scaling_enabled=False)
+data = np.matrix('1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 3 40; 5 60; 0 10; 10 110')
+
+trainer = Trainer(data,
+                  test_sample_ratio=0.1,
+                  learning_rate=0.001,
+                  is_feature_scaling_enabled=False)
 trainer.train()
 
-print(trainer.predict([3]))
-
-
-            
-        
-    
+print(trainer.predict(np.matrix('3; 4; 10; 12; 1300')))
