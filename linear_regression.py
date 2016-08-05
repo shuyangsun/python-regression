@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import math
 import time
 import enum
@@ -16,7 +17,7 @@ class Trainer:
                  data,
                  test_sample_ratio=0.0,
                  learning_rate=0.01,
-                 features_pre_processing_type=FeaturePreProcessingType.none):
+                 features_pre_processing_type=FeaturePreProcessingType.feature_scaling):
         """
         Initialize a trainer with a training set data, which is an augmented matrix.
         Test sample percentage indicates how many percent of the data should be used as test samples,
@@ -33,7 +34,8 @@ class Trainer:
         self.__setup_training_and_testing_sets()
         self.__setup_weights()
 
-    def train(self):
+    def train(self, print_cost_while_training=False):
+        print('Started training...')
         start_time = time.time()
         last_cost = self.__cost_of_training_set()
         cost_not_change_count = 0
@@ -44,6 +46,8 @@ class Trainer:
             else:
                 self.__weights = self.__weights - change * self.__learning_rate
             current_cost = self.__cost_of_training_set()
+            if print_cost_while_training:
+                print('cost: {0:.2f}'.format(current_cost))
             if current_cost == last_cost:
                 cost_not_change_count += 1
             last_cost = current_cost
@@ -51,12 +55,13 @@ class Trainer:
         end_time = time.time()
         print('Finished training, used {0:.2f} seconds.'.format(end_time - start_time))
         print('Weights are: {0}'.format(self.__weights))
-        print('Cost is {0:.10f}'.format(self.__cost_of_testing_set()))
-        # try:
-        #     print('Cost is {0}.'.format(self.__cost_of_testing_set()))
-        # except ValueError as e:
-        #     print(e)
-        
+        try:
+            cost_of_testing = self.__cost_of_testing_set()
+        except RuntimeWarning as e:
+            print('Cost for testing samples is too large, can\'t be printed.')
+        else:
+            print('Cost for {0} testing samples is {1:.2f}'.format(np.size(self.__testing_set_features, axis=0), cost_of_testing))
+
     def predict(self, features):
         if self.__features_pre_processing_type == FeaturePreProcessingType.feature_scaling:
             features = self.__scale_features(features)
@@ -125,7 +130,7 @@ class Trainer:
     def __derivative_of_cost(self):
         predictions = self.__predict_scaled_with_x0_column_features(self.__training_set_features)
         diff = predictions - self.__training_set_outputs
-        features_scaled_with_diff = (self.__training_set_features.transpose() @ diff).transpose()
+        features_scaled_with_diff = (self.__training_set_features.transpose() * diff).transpose()
         return np.average(features_scaled_with_diff, axis=0)
 
     def __scale_learning_rate_if_enabled(self):
@@ -134,12 +139,14 @@ class Trainer:
             self.__learning_rate *= self.__feature_scaling_std
             self.__learning_rate = np.insert(self.__learning_rate, obj=0, values=current_flat_rate, axis=1)
 
-data = np.matrix('1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 1 20; 3 40; 5 60; 0 10; 10 110; -1 0; 3 40; 5 60; 0 10; 10 110')
+df = pd.read_csv('/Users/shuyangsun/Developer/Machine Learning/data/housing/housing.data', header=None, delim_whitespace=True)
+data = df.as_matrix()
 
 trainer = Trainer(data,
-                  test_sample_ratio=0.2,
-                  learning_rate=0.01,
+                  test_sample_ratio=0.05,
+                  learning_rate=0.1,
                   features_pre_processing_type=FeaturePreProcessingType.feature_scaling)
-trainer.train()
 
-print(trainer.predict(np.matrix('3; 4; 10; 12; 1300')))
+trainer.train(print_cost_while_training=True)
+
+print(trainer.predict(np.matrix('15.02340   0.00  18.100  0  0.6140  5.3040  97.30  2.1007  24  666.0  20.20 349.48  24.91')))
