@@ -139,7 +139,7 @@ class Trainer:
             self.__learning_rate *= self.__feature_scaling_std
             self.__learning_rate = np.insert(self.__learning_rate, obj=0, values=current_flat_rate, axis=1)
 
-df = pd.read_csv('/Users/shuyangsun/Developer/Machine Learning/data/housing/housing.data', header=None, delim_whitespace=True)
+df = pd.read_csv('housing/housing.data', header=None, delim_whitespace=True)
 data = df.as_matrix()
 
 trainer = Trainer(data,
