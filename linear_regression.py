@@ -53,14 +53,17 @@ class Trainer:
             last_cost = current_cost
     
         end_time = time.time()
-        print('Finished training, used {0:.2f} seconds.'.format(end_time - start_time))
+        print('Used {0:.2f} seconds to train model.'.format(end_time - start_time))
         print('Weights are: {0}'.format(self.__weights))
         try:
-            cost_of_testing = self.__cost_of_testing_set()
+            cost_of_testing, error_rate_of_testing = self.__cost_and_error_rate(self.__testing_set_features, self.__testing_set_outputs)
         except RuntimeWarning as e:
             print('Cost for testing samples is too large, can\'t be printed.')
         else:
             print('Cost for {0} testing samples is {1:.2f}'.format(np.size(self.__testing_set_features, axis=0), cost_of_testing))
+            print('Error rate for {0} testing samples is ±{1:.2f}%.'.format(np.size(self.__testing_set_features, axis=0), error_rate_of_testing * 100))
+        finally:
+            print('Training finished.')
 
     def predict(self, features):
         if self.__features_pre_processing_type == FeaturePreProcessingType.feature_scaling:
@@ -115,17 +118,20 @@ class Trainer:
         self.__weights = np.zeros(np.size(self.__training_set_features, axis=1))
         
     def __cost_of_training_set(self):
-        return self.__cost(self.__training_set_features, self.__training_set_outputs)
+        result, _ = self.__cost_and_error_rate(self.__training_set_features, self.__training_set_outputs)
+        return result
     
     def __cost_of_testing_set(self):
-        return self.__cost(self.__testing_set_features, self.__testing_set_outputs)
+        result, _ = self.__cost_and_error_rate(self.__testing_set_features, self.__testing_set_outputs)
+        return result
     
-    def __cost(self, features, outputs):
+    def __cost_and_error_rate(self, features, outputs):
         predictions = self.__predict_scaled_with_x0_column_features(features)
         diff = np.array(outputs - predictions)
         diff_squared = np.power(diff, 2)
-        result = np.average(diff_squared) / 2.0
-        return result
+        result_cost = np.average(diff_squared) / 2.0
+        result_error_rate = np.average(np.abs(diff) / predictions)
+        return (result_cost, result_error_rate)
     
     def __derivative_of_cost(self):
         predictions = self.__predict_scaled_with_x0_column_features(self.__training_set_features)
@@ -143,10 +149,8 @@ df = pd.read_csv('housing/housing.data', header=None, delim_whitespace=True)
 data = df.as_matrix()
 
 trainer = Trainer(data,
-                  test_sample_ratio=0.05,
-                  learning_rate=0.1,
-                  features_pre_processing_type=FeaturePreProcessingType.feature_scaling)
+                test_sample_ratio=0.05,
+                learning_rate=0.01,
+                features_pre_processing_type=FeaturePreProcessingType.feature_scaling)
 
-trainer.train(print_cost_while_training=True)
-
-print(trainer.predict(np.matrix('15.02340   0.00  18.100  0  0.6140  5.3040  97.30  2.1007  24  666.0  20.20 349.48  24.91')))
+trainer.train(print_cost_while_training=False)
